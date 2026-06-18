@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from feature.user.service import require_admin
 from database import SessionLocal, get_db
 from models.user import User
-from feature.common.response import AdminGetAllUsersResponse, MessageResponse
+from feature.common.response import MessageResponse, PaginatedAdminUsersResponse
 
 
 router_admin = APIRouter(prefix="/admin", tags=["admin"])
@@ -38,15 +38,37 @@ async def delete_user(user_id: str, current_user = Depends(require_admin), db: A
     await db.execute(text("DELETE FROM users WHERE user_id = :user_id"), {"user_id": user_id})
     await db.commit()
     return {"message": "User deleted successfully"}
+from fastapi import Depends, Query
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
-@router_admin.get("/users", response_model=AdminGetAllUsersResponse)
+@router_admin.get("/users", response_model=PaginatedAdminUsersResponse)
 async def get_all_users(
     current_user = Depends(require_admin), 
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    page: int = Query(default=1, ge=1, description="Page number"),
+    
 ):
-    result = await db.execute(select(User))
+    size = 10
+    # Calculate how many records to skip
+    offset_value = (page - 1) * size
+
+    # 1. Run a lightweight query to get total user count
+    count_query = select(func.count()).select_from(User)
+    total_items = await db.scalar(count_query) or 0
+
+    # 2. Fetch only the requested slice of users
+    query = select(User).offset(offset_value).limit(size)
+    result = await db.execute(query)
     users = result.scalars().all()
     
+    # 3. Calculate total pages available
+    total_pages = (total_items + size - 1) // size if total_items > 0 else 0
+
     return {
-        "users": users
+        "users": users,
+        "page": page,
+        "size": size,
+        "total_items": total_items,
+        "total_pages": total_pages
     }

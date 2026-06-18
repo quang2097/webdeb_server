@@ -1,12 +1,30 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from feature.chatbot.schema import ChatbotRequest, ChatbotResponse
-from feature.chatbot.service import chat_with_novel
+from feature.chatbot.schema import ChatSearchRequest, ChatbotRequest, ChatbotResponse, ChatSearchResponse
+from feature.chatbot.service import ai_search_novels, chat_with_novel
 from feature.rag.service import clean_extracted_text
 
 router_chatbot = APIRouter(prefix="/chatbot", tags=["chatbot"])
+
+@router_chatbot.post("/search", response_model=ChatSearchResponse)
+async def ai_search(data: ChatSearchRequest, db: AsyncSession = Depends(get_db)):
+    extracted_query, novels, chunk_texts = await ai_search_novels(
+        db,
+        data.question,
+        data.limit,
+        data.top_k,
+    )
+    if not novels:
+        raise HTTPException(status_code=404, detail="No novels found matching the AI search query")
+
+    return {
+        "query": data.question,
+        "extracted_query": extracted_query,
+        "novels": novels,
+        "chunks": chunk_texts,
+    }
 
 
 @router_chatbot.post("/novel", response_model=ChatbotResponse)

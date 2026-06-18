@@ -14,14 +14,7 @@ class SearchNovelResponse(BaseModel):
     novel_series: str | None = None
 
 
-class ChatSearchRequest(BaseModel):
-    question: str
-    limit: int = Field(default=10, ge=1, le=50)
-    top_k: int = Field(default=8, ge=1, le=20)
 
 
-class ChatSearchResponse(BaseModel):
-    query: str
-    extracted_query: str
-    novels: list[SearchNovelResponse]
-    chunks: list[str]
+
+

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from feature.auth import service
@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from .schema import UserSignUp
 from feature.common.response import AuthRegisterResponse, TokenResponse, RootAdminResponse
-
+from jose import jwt, JWTError
 
 router_auth = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -123,9 +123,39 @@ async def login(user_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     if user.user_islocked:
         raise HTTPException(status_code=403, detail="Account is locked. Please contact support.")
     # create token
-    access_token = service.create_access_token(data={"user_name":user.user_name,
-                                                     "user_email":user.user_email,
-                                                     "user_role":user.user_role})
+    access_token = service.create_access_token(data={
+        "user_id": str(user.user_id),
+        "user_name":user.user_name,
+         "user_email":user.user_email,
+        "user_role":user.user_role})
     return {"access_token": access_token, "token_type": "bearer"}
 
 # endregion 
+
+@router_auth.get("/verify-token", description="Check if the provided access token is valid and not expired")
+async def verify_token(token: str = Depends(service.oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials or token has expired",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    try:
+
+        payload = service.verify_access_token(token, credentials_exception)
+        
+        user_email: str = payload.get("user_email")
+        if user_email is None:
+            raise credentials_exception
+            
+        # If no exception is raised, the token is perfectly valid!
+        return {
+            "status": "valid", 
+            "user_id": payload.get("user_id"),
+            "user_name": payload.get("user_name"),
+            "user_email": user_email,
+            "user_role": payload.get("user_role")
+        }
+        
+    except JWTError: # Catches both invalid signatures and expired tokens
+        raise credentials_exception 
