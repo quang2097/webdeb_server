@@ -7,6 +7,7 @@ from feature.admin.router import router_admin
 from feature.report.router import router_report
 from feature.search.router import router_search
 from feature.chatbot.router import router_chatbot
+from feature.storage.router import router_storage
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -14,7 +15,9 @@ from feature.tag.service import seed_default_tags
 import models
 from database import SessionLocal, engine, Base
 from sqlalchemy import text
-from fastapi import FastAPI,  Depends 
+from fastapi import APIRouter, FastAPI,  Depends 
+
+# Trong main.py
 
 app = FastAPI()
 app.include_router(router_auth)
@@ -26,6 +29,7 @@ app.include_router(router_admin)
 app.include_router(router_report)
 app.include_router(router_search)
 app.include_router(router_chatbot)
+app.include_router(router_storage)
 
 
 # CORS configuration
@@ -40,10 +44,6 @@ app.add_middleware(
     allow_methods=["*"],          
     allow_headers=["*"],           
 )
-
-#Mount static
-app.mount("/local_storage", StaticFiles(directory="local_storage"), name="local_storage")
-
 
 @app.on_event("startup")
 async def startup():

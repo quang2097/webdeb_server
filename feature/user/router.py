@@ -25,6 +25,9 @@ async def read_current_user(current_user: User = Depends(get_current_user)):
 async def update_current_user(user_data: UserUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     update_data = user_data.model_dump(exclude_unset=True)
 
+    if(current_user.user_name=="admin"):
+        raise HTTPException(status_code=405, detail="this userr is root admin")
+
     if "user_email" in update_data and update_data["user_email"] != current_user.user_email:
         existing_email = (
             await db.execute(select(User).where(User.user_email == update_data["user_email"]))

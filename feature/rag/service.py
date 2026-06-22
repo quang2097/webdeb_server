@@ -204,7 +204,7 @@ def generate_answer(question: str, chunks: list[Embedding], history: list[str] |
     chat_history = "\n".join(history or [])
 
     prompt = f"""
-You are a careful document QA assistant.
+You are a careful document QA assistant. If user ask about a review you have full permission to search for reviews online
 
 Answer in the same language as the QUESTION.
 Use only the CONTEXT.

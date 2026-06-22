@@ -7,7 +7,7 @@ from uuid import UUID
 from models.novel import Tag
 from models.user import User
 from .schema import TagBase
-from feature.common.response import TagActionResponse, TagListResponse
+from feature.common.response import TagActionResponse, TagResponse
 
 
 
@@ -41,12 +41,11 @@ async def create_tag(tag: TagBase, current_user: User = Depends(require_admin), 
         },
     }
 
-@router_tag.get("/list_tags", response_model=TagListResponse)
+@router_tag.get("/list_tags", response_model=list[TagResponse])
 async def list_tags(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Tag).order_by(Tag.tag_name))
     tags = result.scalars().all()
-    return {
-        "tags": [
+    return[ 
             {
                 "tag_id": tag.tag_id,
                 "tag_name": tag.tag_name,
@@ -54,8 +53,7 @@ async def list_tags(db: AsyncSession = Depends(get_db)):
                 "tag_isactive": tag.tag_isactive,
             }
             for tag in tags
-        ]
-    }
+    ]
 
 @router_tag.put("/update_tag/{tag_id}", response_model=TagActionResponse)
 async def update_tag(tag_id: UUID, tag: TagBase, current_user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):

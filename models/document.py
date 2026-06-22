@@ -1,5 +1,5 @@
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, Computed, DateTime, ForeignKey, Index, String, Text, text
+from sqlalchemy import Column, Computed, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import TSVECTOR, UUID
 from sqlalchemy.orm import relationship
 from database import Base
@@ -16,6 +16,7 @@ class Document(Base):
     doc_status    = Column(String, nullable=False, default="pending")
     doc_error     = Column(Text, nullable=True)
     doc_createdat = Column(DateTime(timezone=True), server_default=text("now()"))
+    file_size     = Column(Integer, nullable=True)
 
     novel = relationship("Novel", back_populates="documents")
     embeddings = relationship("Embedding", back_populates="document", cascade="all, delete-orphan")

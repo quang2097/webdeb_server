@@ -44,6 +44,11 @@ async def require_admin(current_user: User = Depends(require_unlocked_user)):
         raise HTTPException(status_code=403, detail="Admin privileges required")
     return current_user
 
+async def require_root_admin(current_user: User = Depends(require_unlocked_user)):
+    if current_user.user_name != "admin":
+        raise HTTPException(status_code=403, detail="Root admin required")
+    return current_user
+
 async def require_owner_or_admin(user_id: UUID, current_user: User = Depends(require_unlocked_user)):
     if current_user.user_role == "admin" or current_user.user_id == user_id:
         return current_user
