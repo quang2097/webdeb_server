@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
+from sqlalchemy import select, update
 from feature.auth import service
-from feature.user.service import require_admin
+from feature.user.service import require_admin, require_root_admin
 from models.user import User
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
@@ -48,32 +48,31 @@ async def create_root_admin(db: AsyncSession=Depends(get_db)):
     }
 
 
-@router_auth.post("/newadmin", response_model=AuthRegisterResponse)
-async def create_admin(admin_data: UserSignUp,current_user: User = Depends(require_admin), db: AsyncSession=Depends(get_db)):
-    # check existing mail n user
-    existing_email = (await db.execute(select(User).where(User.user_email == admin_data.email))).scalar()
-    if existing_email:
-        raise HTTPException(status_code=400, detail="Email already exists")
-    
-    existing_username = (await db.execute(select(User).where(User.user_name == admin_data.username))).scalar()
-    if existing_username:
-        raise HTTPException(status_code=400, detail="Username already exists")
-    
-    # import to db
-    hashed_password = service.hash_password(admin_data.password)
-    new_admin = User(
-        user_name=admin_data.username,
-        user_email=admin_data.email,
-        user_hashedpassword=hashed_password,
-        user_role="admin"
-    )
-    db.add(new_admin)
-    await db.commit()
-    return {"message": "Admin user created successfully",
-            "user_name": new_admin.user_name,
-            "user_email": new_admin.user_email,
-            "user_id": new_admin.user_id,
-            "user_role": new_admin.user_role}
+@router_auth.put("/newadmin/{user_id}")
+async def create_admin(user_id: str, current_user: User = Depends(require_root_admin), db: AsyncSession=Depends(get_db)):
+    user = await db.get(User, user_id)
+    if user.user_name == "admin":
+        raise HTTPException(status_code=400, detail="Cannot promote an root admin")
+    if user.user_role == "admin":
+        raise HTTPException(status_code=400, detail="Cannot promote an admin user")
+    if user.user_islocked:
+        raise HTTPException(status_code=400, detail="Cannot promote an locked user")
+    else:
+        await db.execute(update(User).where(User.user_id == user_id).values(user_role="admin"))
+        await db.commit()
+    return {"message": "User promoted successfully"}
+
+@router_auth.put("/dropadmin/{user_id}")
+async def drop_admin(user_id: str, current_user: User = Depends(require_root_admin), db: AsyncSession=Depends(get_db)):
+    user = await db.get(User, user_id)
+    if user.user_name == "admin":
+        raise HTTPException(status_code=400, detail="Cannot drop an root admin")
+    if user.user_role == "user":
+        raise HTTPException(status_code=400, detail="Cannot drop an user")
+    else:
+        await db.execute(update(User).where(User.user_id == user_id).values(user_role="user"))
+        await db.commit()
+    return {"message": "Admin dropped successfully"}
 
 
 @router_auth.post("/signup", response_model=AuthRegisterResponse)

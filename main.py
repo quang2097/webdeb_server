@@ -15,7 +15,9 @@ from feature.tag.service import seed_default_tags
 import models
 from database import SessionLocal, engine, Base
 from sqlalchemy import text
-from fastapi import FastAPI,  Depends 
+from fastapi import APIRouter, FastAPI,  Depends 
+
+# Trong main.py
 
 app = FastAPI()
 app.include_router(router_auth)

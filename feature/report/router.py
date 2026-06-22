@@ -77,6 +77,31 @@ async def delete_report(report_id: UUID, current_user: User = Depends(require_us
     return {"message": "Report deleted successfully"}
 
 @router_report.get("/mine")
-async def get_all_reports(current_user: User = Depends(require_user), db: AsyncSession = Depends(get_db)):
+async def get_reports(
+    current_user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+    page: int = Query(1, ge=1, description="Page number"),
+):
+    # Calculate how many records to skip
+    size = 10
+    offset_value = (page - 1) * size
+    
+    # 1. Fetch the paginated data
+    query = select(Report).offset(offset_value).limit(size)
     result = await db.execute(select(Report).where(Report.report_user_id == current_user.user_id))
-    return result.scalars().all()
+    reports = result.scalars().all()
+    
+    # 2. Fetch the total count of items (essential for frontend pagination)
+    count_query = select(func.count()).select_from(Report)
+    total_items = await db.scalar(count_query) or 0
+    
+    # Calculate total pages
+    total_pages = (total_items + size - 1) // size if total_items > 0 else 0
+
+    return {
+        "items": reports,
+        "page": page,
+        "size": size,
+        "total_items": total_items,
+        "total_pages": total_pages
+    }

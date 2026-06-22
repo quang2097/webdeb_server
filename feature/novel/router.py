@@ -148,7 +148,8 @@ async def get_novels_by_all_tags(
 
 @router_novel.get("/content/{novel_id}", response_model=NovelContentResponse)
 async def get_novel_by_id(novel_id: UUID, db: AsyncSession = Depends(get_db)):
-    result  = await db.execute(select(Novel).where(Novel.novel_id == novel_id))
+    stmt = select(Novel).options(selectinload(Novel.tags)).where(Novel.novel_id == novel_id)
+    result = await db.execute(stmt)
     novel = result.scalar_one_or_none()
     docresult  = await db.execute(select(Document).where(Document.doc_novel_id == novel_id))
     doc = docresult.scalars().one_or_none()
@@ -161,6 +162,9 @@ async def get_novel_by_id(novel_id: UUID, db: AsyncSession = Depends(get_db)):
         "novel_description": novel.novel_description,
         "novel_coverurl": novel.novel_coverurl,
         "novel_series": novel.novel_series,
+        "novel_views": novel.novel_views,
+        "novel_downloads": novel.novel_downloads,
+        "novel_updatedat": novel.novel_updatedat,
         "document":
             {
                 "doc_id": doc.doc_id,
@@ -170,7 +174,8 @@ async def get_novel_by_id(novel_id: UUID, db: AsyncSession = Depends(get_db)):
                 "doc_status": doc.doc_status,
                 "doc_error": doc.doc_error,
             }
-            if doc else None
+            if doc else None,
+        "tags": novel.tags,    
     }
 
 
