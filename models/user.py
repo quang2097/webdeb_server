@@ -16,6 +16,9 @@ class User(Base):
     
     
     user_islocked = Column(Boolean, nullable=False, default=False)
+    user_isactivated = Column(Boolean, nullable=False, default=False)
+
+    otp = Column(String, nullable=True)
 
     novels = relationship("Novel", back_populates="uploader")
     reports = relationship("Report", back_populates="user", cascade="all, delete-orphan")

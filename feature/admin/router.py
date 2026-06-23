@@ -50,19 +50,16 @@ async def get_all_users(
     
 ):
     size = 10
-    # Calculate how many records to skip
+
     offset_value = (page - 1) * size
 
-    # 1. Run a lightweight query to get total user count
     count_query = select(func.count()).select_from(User)
     total_items = await db.scalar(count_query) or 0
 
-    # 2. Fetch only the requested slice of users
     query = select(User).offset(offset_value).limit(size)
     result = await db.execute(query)
     users = result.scalars().all()
     
-    # 3. Calculate total pages available
     total_pages = (total_items + size - 1) // size if total_items > 0 else 0
 
     return {

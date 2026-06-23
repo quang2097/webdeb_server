@@ -33,5 +33,5 @@ class SearchNovelResponse(BaseModel):
 class ChatSearchResponse(BaseModel):
     query: str
     extracted_query: str
-    novels: list[SearchNovelResponse] # <-- Python now knows what this is!
+    novels: list[SearchNovelResponse]
     chunks: list[str]

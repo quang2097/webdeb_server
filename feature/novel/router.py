@@ -32,15 +32,13 @@ async def novel_list(db: AsyncSession = Depends(get_db)):
 
 @router_novel.get("/list", response_model=PaginatedNovelResponse)
 async def get_all_novels(
-    # Default to page 1, and 5 items per page
+
     page: int = Query(1, ge=1, description="Page number"),
     db: AsyncSession = Depends(get_db)
 ):
     limit = 10
-    # 1. Calculate how many items to skip
     skip = (page - 1) * limit
 
-    # 2. Query for the actual novels (with limit and offset)
     query = (
         select(Novel)
         .options(selectinload(Novel.tags)) 
@@ -51,12 +49,10 @@ async def get_all_novels(
     result = await db.execute(query)
     novels = result.scalars().all()
 
-    # 3. (Optional but highly recommended) Get the total count of novels
-    # This helps your Angular frontend know how many pages exist!
     count_query = (
         select(func.count())
         .select_from(Novel)
-        .where(Novel.novel_isprivate == False) # <--- THÊM ĐIỀU KIỆN NÀY VÀO ĐÂY
+        .where(Novel.novel_isprivate == False) 
     )
     total_result = await db.execute(count_query)
     total_novels = total_result.scalar()
@@ -90,14 +86,13 @@ async def get_novels_by_all_tags(
     limit = 10
     skip = (page - 1) * limit
 
-    # 1. Fetch the actual paginated novels
     query = (
         select(Novel)
         .join(Novel.tags)
         .where(
             
             Tag.tag_id.in_(tag_ids),
-            Novel.novel_isprivate == False # <--- Gom chung điều kiện lọc vào đây
+            Novel.novel_isprivate == False 
         )
         .options(selectinload(Novel.tags)) 
         .group_by(Novel.novel_id)
@@ -109,32 +104,27 @@ async def get_novels_by_all_tags(
     result = await db.execute(query)
     novels = result.scalars().all()
     
-    # 2. Build a subquery to correctly count the total number of matches
     subquery = (
         select(Novel.novel_id)
         .join(Novel.tags)
         .where(
             Tag.tag_id.in_(tag_ids),
-            Novel.novel_isprivate == False # <--- Gom chung điều kiện vào đây trước khi tạo subquery
+            Novel.novel_isprivate == False 
         )
         .group_by(Novel.novel_id)
         .having(func.count(Tag.tag_id) == num_tags)
-        .subquery() # <--- Đóng gói thành subquery ở bước cuối cùng
+        .subquery() 
     )
     
-    # Count how many rows the subquery returned
     count_query = (
         select(func.count())
         .select_from(subquery)
-        # KHÔNG cần thêm .where(isprivate == False) ở đây nữa vì dữ liệu bên trong subquery đã "sạch" rồi
     )
     total_result = await db.execute(count_query)
     total_novels = total_result.scalar()
 
-    # 3. Calculate total pages
     total_pages = math.ceil(total_novels / limit) if total_novels else 0
 
-    # 4. Return the formatted response for Angular
     return {
         "data": novels,
         "meta": {
@@ -184,12 +174,11 @@ async def get_novel_by_id(novel_id: UUID, db: AsyncSession = Depends(get_db)):
 @router_novel.get("/info/{document_id}", response_model=NovelInfoResponse)
 async def get_novel_by_document_id(document_id: UUID, db: AsyncSession = Depends(get_db)):
     
-    # 1. Truy vấn 1 lần lấy trọn ổ: Document + Novel liên kết + Tags của Novel đó
     query = (
         select(Document)
         .options(
-            joinedload(Document.novel)          # Lấy thông tin Novel
-            .selectinload(Novel.tags)           # Kéo theo danh sách Tags của Novel đó
+            joinedload(Document.novel)        
+            .selectinload(Novel.tags)           
         )
         .where(Document.doc_id == document_id)
     )
@@ -197,18 +186,14 @@ async def get_novel_by_document_id(document_id: UUID, db: AsyncSession = Depends
     result = await db.execute(query)
     doc = result.scalar_one_or_none()
     
-    # 2. Bắt lỗi nếu không tìm thấy Document
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # 3. Lấy ra novel từ object document (SQLAlchemy đã tự động gắn vào nhờ Relationship)
     novel = doc.novel
     
-    # Bắt lỗi nếu Document này chưa được liên kết với Novel nào
     if not novel:
         raise HTTPException(status_code=404, detail="Tài liệu này hiện chưa được liên kết với bất kỳ truyện nào (doc_novel_id bị trống).")
 
-    # 4. Trả về Response
     return {
         "novel_id": novel.novel_id,
         "novel_title": novel.novel_title,
@@ -217,7 +202,7 @@ async def get_novel_by_document_id(document_id: UUID, db: AsyncSession = Depends
         "novel_coverurl": novel.novel_coverurl,
         "novel_series": novel.novel_series,
         "novel_isprivate": novel.novel_isprivate,
-        "tags": novel.tags, # Dữ liệu tags cũng đã được tự động kéo về
+        "tags": novel.tags, 
     }
     
     
@@ -296,7 +281,6 @@ async def get_user_documents(
     try:
         offset_value = (page - 1) * size
 
-        # 1. Get total count for this user's documents
         count_query = (
             select(func.count())
             .select_from(Document)
@@ -305,7 +289,6 @@ async def get_user_documents(
         )
         total_items = await db.scalar(count_query) or 0
 
-        # 2. Get paginated data
         result = await db.execute(
             select(Document)
             .options(joinedload(Document.novel))
@@ -316,7 +299,6 @@ async def get_user_documents(
         )
         documents = result.scalars().all()
 
-        # 3. Format items
         items = [
             DocDetailResponse(
                 novel_id=doc.doc_novel_id,
@@ -361,11 +343,9 @@ async def get_admin_documents(
     try:
         offset_value = (page - 1) * size
 
-        # 1. Get total count for all documents
         count_query = select(func.count()).select_from(Document)
         total_items = await db.scalar(count_query) or 0
 
-        # 2. Get paginated data
         result = await db.execute(
             select(Document)
             .options(joinedload(Document.novel))
@@ -375,7 +355,6 @@ async def get_admin_documents(
         )
         documents = result.scalars().all()
 
-        # 3. Format items
         items = [
             DocDetailResponse(
                 novel_id=doc.doc_novel_id,
