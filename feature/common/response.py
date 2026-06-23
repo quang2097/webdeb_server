@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class DocResponse(BaseModel):
     novel_id : UUID;
     document_id:UUID;
-    doc_createdat: Optional[datetime] = None  # Phải có Optional hoặc "= None"
+    doc_createdat: Optional[datetime] = None
     doc_size: Optional[int] = None
 class DocDetailResponse(BaseModel):
     novel_id : UUID
@@ -106,7 +106,6 @@ class NovelListItemResponse(ORMModel):
     novel_downloads: int = 0
     novel_updatedat: datetime | None = None
 
-    # 1. The schema for a single novel in the list
 class NovelListResponse(BaseModel):
     novel_id: UUID
     novel_title: str
@@ -123,15 +122,12 @@ class NovelListResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
-# 2. The schema for the pagination metadata
 class PaginationMeta(BaseModel):
     current_page: int
     items_per_page: int
     total_novels: int
     total_pages: int
 
-# 3. The final response schema
 class PaginatedNovelResponse(BaseModel):
     data: list[NovelListResponse]
     meta: PaginationMeta

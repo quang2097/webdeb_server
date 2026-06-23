@@ -14,7 +14,6 @@ from uuid import UUID
 from fastapi.responses import JSONResponse
 from fastapi import Query 
 
-# 1. FIXED PREFIX: This handles the "/local_storage" part of the URL automatically
 router_storage = APIRouter(prefix="/storage", tags=["Storage"])
 
 
@@ -35,25 +34,20 @@ from fastapi.responses import JSONResponse
 
 @router_storage.get("/list/local_storage/image_secondary/{folder_path:path}")
 async def get_secondary_image_list(folder_path: str):
-    # Cố định luôn thư mục đọc từ ổ cứng là "image_secondary"
     folder = BASE_DIR / "image_secondary"
     target_dir = (folder / folder_path).resolve()
 
-    # 1. Bảo mật: Chống Directory Traversal
     if not str(target_dir).startswith(str(folder.resolve())):
         raise HTTPException(status_code=400, detail="Invalid folder path")
 
-    # 2. Kiểm tra xem thư mục có tồn tại không
     if not target_dir.exists() or not target_dir.is_dir():
         raise HTTPException(status_code=404, detail="Folder not found")
 
     image_urls = []
     valid_extensions = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
-    # 3. Quét toàn bộ file và tạo URL
     for file_path in target_dir.iterdir():
         if file_path.is_file() and file_path.suffix.lower() in valid_extensions:
-            # Chốt cứng URL trả về cũng chứa "image_secondary"
             url = f"http://localhost:8000/storage/view/local_storage/image_secondary/{folder_path}/{file_path.name}"
             image_urls.append(url)
 
@@ -96,7 +90,7 @@ async def download_file(file_type: str, filename: str, novel_id: UUID,db: AsyncS
     if file_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="Invalid file type")
 
-    folder, media_type = ALLOWED_TYPES[file_type]  # <-- unpack the tuple
+    folder, media_type = ALLOWED_TYPES[file_type] 
     file_path = (folder / filename).resolve()
 
     if not str(file_path).startswith(str(folder.resolve())):
@@ -113,7 +107,6 @@ async def download_file(file_type: str, filename: str, novel_id: UUID,db: AsyncS
 
     await increase_novel_downloads(db, novel_id)
 
-    # Encode for Content-Disposition (handles non-ASCII via RFC 5987)
     safe_title = re.sub(r'[\\/*?:"<>|]', "", novel.novel_title).strip()
     download_name = f"{safe_title}_{file_path.name}"
     ascii_fallback = download_name.encode("ascii", "ignore").decode() or file_path.name
@@ -135,7 +128,7 @@ async def download_file(file_type: str, filename: str, novel_id: UUID,db: AsyncS
 async def serve_generic_file(
     file_type: str, 
     filename: str, 
-    novel_id: UUID = Query(None), # Thêm dòng này để nhận novel_id nếu có
+    novel_id: UUID = Query(None), 
     db: AsyncSession = Depends(get_db)
 ):
     if file_type not in ALLOWED_TYPES:
@@ -150,7 +143,6 @@ async def serve_generic_file(
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 
-    # NẾU CÓ TRUYỀN NOVEL_ID THÌ TĂNG VIEW
     if novel_id:
         await increase_novel_views(db, novel_id)
 

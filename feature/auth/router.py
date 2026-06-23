@@ -6,7 +6,7 @@ from feature.user.service import require_admin, require_root_admin
 from models.user import User
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
-from .schema import UserSignUp
+from .schema import ActivateAccountRequest, ForgotPasswordRequest, ResetPasswordRequest, UserSignUp
 from feature.common.response import AuthRegisterResponse, TokenResponse, RootAdminResponse
 from jose import jwt, JWTError
 
@@ -33,7 +33,8 @@ async def create_root_admin(db: AsyncSession=Depends(get_db)):
         user_name=username,
         user_email=email,
         user_hashedpassword=service.hash_password(password),
-        user_role="admin"
+        user_role="admin",
+        user_isactivated=True
     )
     
     db.add(new_admin)
@@ -78,30 +79,64 @@ async def drop_admin(user_id: str, current_user: User = Depends(require_root_adm
 @router_auth.post("/signup", response_model=AuthRegisterResponse)
 async def signup(user_data: UserSignUp, db: AsyncSession=Depends(get_db)):
     
-    # check existing mail n user
-    existing_email = (await db.execute(select(User).where(User.user_email == user_data.email))).scalar()
-    if existing_email:
-        raise HTTPException(status_code=400, detail="Email already exists")
-    
-    existing_username = (await db.execute(select(User).where(User.user_name == user_data.username))).scalar()
+    existing_username = (await db.execute(select(User).where(User.user_name == user_data.user_name))).scalar()
     if existing_username:
         raise HTTPException(status_code=400, detail="Username already exists")
+
+    existing_user = (await db.execute(select(User).where(User.user_email == user_data.user_email))).scalar()
     
-    # import to db
+    new_otp = service.generate_secure_otp()
     hashed_password = service.hash_password(user_data.password)
+    
+    if existing_user:
+        if existing_user.user_isactivated:
+            raise HTTPException(status_code=400, detail="Email already exists and is activated")
+        else:
+            existing_user.user_name = user_data.user_name
+            existing_user.user_hashedpassword = hashed_password
+            existing_user.otp = new_otp
+            
+            await db.commit()
+            await service.otp_email(existing_user.user_email, new_otp)
+            
+            return {
+                "message": "Account exists but not activated. New OTP sent.",
+                "user_name": existing_user.user_name,
+                "user_email": existing_user.user_email,
+                "user_id": str(existing_user.user_id) 
+            }
+    
     new_user = User(
-        user_name=user_data.username,
-        user_email=user_data.email,
-        user_hashedpassword=hashed_password
+        user_name=user_data.user_name,
+        user_email=user_data.user_email,
+        user_hashedpassword=hashed_password,
+        user_isactivated=False,
+        otp=new_otp
     )
+
     db.add(new_user)
     await db.commit()
-    return {"message": "User created successfully",
-            "user_name": new_user.user_name,
-            "user_email": new_user.user_email,
-            "user_id": new_user.user_id}
+    
+    await service.otp_email(new_user.user_email, new_otp)
 
-# endregion
+    return {
+        "message": "User created successfully. Please check email for OTP.",
+        "user_name": new_user.user_name,
+        "user_email": new_user.user_email,
+        "user_id": str(new_user.user_id)
+    }
+
+@router_auth.put("/activate/account")
+async def activateAccount(user_data: ActivateAccountRequest, db: AsyncSession=Depends(get_db)):
+    user = await db.get(User, user_data.user_id)
+    if user.user_islocked:
+        raise HTTPException(status_code=400, detail="Cannot activate an locked user")
+    if user.otp != user_data.otp:
+       raise HTTPException(status_code=400, detail="Wrong otp")
+    else:
+        await db.execute(update(User).where(User.user_id == user_data.user_id).values(user_isactivated=True))
+        await db.commit()
+    return {"message": "User activated successfully"}
 
 
 
@@ -110,7 +145,6 @@ async def signup(user_data: UserSignUp, db: AsyncSession=Depends(get_db)):
 
 @router_auth.post("/login", description="Using email and password to login", response_model=TokenResponse)
 async def login(user_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession=Depends(get_db)):
-    # check user exist
     user = (await db.execute(select(User).where(User.user_email == user_data.username))).scalar()
     
     if not user:
@@ -121,7 +155,10 @@ async def login(user_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     
     if user.user_islocked:
         raise HTTPException(status_code=403, detail="Account is locked. Please contact support.")
-    # create token
+    
+    if user.user_isactivated == False:
+        raise HTTPException(status_code=403, detail="Account is not activated yet.")
+    
     access_token = service.create_access_token(data={
         "user_id": str(user.user_id),
         "user_name":user.user_name,
@@ -147,7 +184,6 @@ async def verify_token(token: str = Depends(service.oauth2_scheme)):
         if user_email is None:
             raise credentials_exception
             
-        # If no exception is raised, the token is perfectly valid!
         return {
             "status": "valid", 
             "user_id": payload.get("user_id"),
@@ -156,5 +192,39 @@ async def verify_token(token: str = Depends(service.oauth2_scheme)):
             "user_role": payload.get("user_role")
         }
         
-    except JWTError: # Catches both invalid signatures and expired tokens
+    except JWTError: 
         raise credentials_exception 
+    
+@router_auth.post("/forgot-password", description="Request a password reset link via email")
+async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    user = (await db.execute(select(User).where(User.user_email == request.email))).scalar_one_or_none()
+    
+    if user:
+        reset_token = service.create_reset_token(request.email)
+        
+        await service.send_password_reset_email(user.user_email, reset_token)
+
+    return {"message": "If an account with that email exists, a password reset link has been sent."}
+
+
+@router_auth.post("/reset-password", description="Submit a new password using a valid reset token")
+async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid or expired reset token"
+    )
+    
+    email = service.verify_reset_token(request.token, credentials_exception)
+    
+    user = (await db.execute(select(User).where(User.user_email == email))).scalar_one_or_none()
+    if not user:
+        raise credentials_exception
+        
+    new_hashed_password = service.hash_password(request.new_password)
+    user.user_hashedpassword = new_hashed_password
+    
+    await db.commit()
+    
+    return {"message": "Password has been reset successfully."}
+
+# endregion

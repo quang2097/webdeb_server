@@ -106,16 +106,12 @@ async def upload_pdf(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# 1. ĐÃ SỬA: Đưa API tĩnh (/all/status) lên TRÊN API động (/{document_id}/status)
-# 2. ĐÃ SỬA: Gộp 3 câu query thành 1 câu query duy nhất để tăng tốc Server
 @router_upload.get("/documents/all/status", response_model=AllDocResponse)    
 async def get_all_document_status(
     current_user=Depends(require_unlocked_user),
     db: AsyncSession = Depends(get_db)
 ):
-    
-    # Lấy TẤT CẢ document của user này trong 1 lần gọi DB
+
     result = await db.execute(
         select(Document, Novel)
         .join(Novel, Document.doc_novel_id == Novel.novel_id)
@@ -127,7 +123,6 @@ async def get_all_document_status(
     list_completed = []
     list_processing = []
 
-    # Phân loại dữ liệu bằng Python (nhanh hơn rất nhiều so với bắt DB làm 3 lần)
     for doc, novel in rows:
         if doc.doc_status == "failed":
             list_failed.append(
@@ -138,7 +133,6 @@ async def get_all_document_status(
                 DocResponse(
                     novel_id=str(doc.doc_novel_id), 
                     document_id=str(doc.doc_id),
-                    # Ép kiểu datetime sang string (nếu có giá trị)
                     doc_createdat=doc.doc_createdat.isoformat() if doc.doc_createdat else None,
                     doc_size=doc.file_size
                 )
@@ -155,8 +149,6 @@ async def get_all_document_status(
         listProcessing=list_processing
     )
 
-
-# Đường dẫn động phải nằm dưới cùng
 @router_upload.get("/documents/{document_id}/status", response_model=DocumentStatusResponse)
 async def get_document_status(
     document_id: UUID,
@@ -274,14 +266,11 @@ async def update_document_information(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
-# In feature/upload/router.py
 
 @router_upload.put("/documents/{document_id}/add/information", response_model=UploadUpdateResponse)
 async def update_document_information(
     document_id: UUID,
     data: PDFUploadRequest = Depends(PDFUploadRequest.as_form),
-    # 1. MAKE THE COVER FILE OPTIONAL
     cover_file: UploadFile | None = File(None), 
     current_user = Depends(require_unlocked_user),
     db: AsyncSession = Depends(get_db),
@@ -298,7 +287,6 @@ async def update_document_information(
         if current_user.user_role != "admin" and current_user.user_id != novel.novel_user:
             raise HTTPException(status_code=403, detail="Access denied")
 
-        # 2. Pass the potentially None cover_file to the service
         novel, document, tags = await add_update_upload_information(
             db,
             document,

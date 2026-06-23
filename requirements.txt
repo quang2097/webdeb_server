@@ -12,3 +12,4 @@ pgvector
 PyMuPDF
 pymupdf4llm
 google-genai
+fastapi-mail
